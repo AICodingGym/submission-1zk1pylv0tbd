@@ -1743,11 +1743,13 @@ def where(cond, x, y, keep_attrs=None):
         values to choose from where `cond` is True
     y : scalar, array, Variable, DataArray or Dataset
         values to choose from where `cond` is False
-    keep_attrs : bool, optional
+    keep_attrs : bool or str or callable, optional
         If True, copy attributes from `x` to the output. For Dataset inputs,
         copy each data variable's attributes from the corresponding variable
-        in `x`. If False, discard attributes. By default, use the global
-        ``keep_attrs`` option, with a default of False.
+        in `x`. Coordinate attributes are also copied from `x` when present.
+        If False, discard attributes. Strings and callables are passed to
+        :py:func:`apply_ufunc` as attribute merging policies. By default, use
+        the global ``keep_attrs`` option, with a default of False.
 
     Returns
     -------
@@ -1836,6 +1838,15 @@ def where(cond, x, y, keep_attrs=None):
             for name in result.data_vars:
                 source = x[name] if hasattr(x, "data_vars") else x
                 result[name].attrs = getattr(source, "attrs", {})
+        if hasattr(result, "coords"):
+            # Coordinates may share Variables with an input; detach them before
+            # changing metadata, without copying or computing the array data.
+            result = result.copy(deep=False)
+            source_coords = getattr(x, "coords", {})
+            for name in result.coords:
+                result.coords[name].attrs = getattr(
+                    source_coords.get(name), "attrs", {}
+                )
 
     return result
 
