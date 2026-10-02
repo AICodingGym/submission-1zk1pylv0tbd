@@ -1727,7 +1727,7 @@ def dot(*arrays, dims=None, **kwargs):
     return result.transpose(*all_dims, missing_dims="ignore")
 
 
-def where(cond, x, y):
+def where(cond, x, y, keep_attrs=None):
     """Return elements from `x` or `y` depending on `cond`.
 
     Performs xarray-like broadcasting across input arguments.
@@ -1743,6 +1743,11 @@ def where(cond, x, y):
         values to choose from where `cond` is True
     y : scalar, array, Variable, DataArray or Dataset
         values to choose from where `cond` is False
+    keep_attrs : bool, optional
+        If True, copy attributes from `x` to the output. For Dataset inputs,
+        copy each data variable's attributes from the corresponding variable
+        in `x`. If False, discard attributes. By default, use the global
+        ``keep_attrs`` option, with a default of False.
 
     Returns
     -------
@@ -1808,8 +1813,11 @@ def where(cond, x, y):
     Dataset.where, DataArray.where :
         equivalent methods
     """
+    if keep_attrs is None:
+        keep_attrs = _get_keep_attrs(default=False)
+
     # alignment for three arguments is complicated, so don't support it yet
-    return apply_ufunc(
+    result = apply_ufunc(
         duck_array_ops.where,
         cond,
         x,
@@ -1817,7 +1825,19 @@ def where(cond, x, y):
         join="exact",
         dataset_join="exact",
         dask="allowed",
+        keep_attrs=keep_attrs,
     )
+
+    if keep_attrs is True and hasattr(result, "attrs"):
+        # Keep the original argument order for broadcasting, but take data
+        # attributes from x rather than from the condition.
+        result.attrs = getattr(x, "attrs", {})
+        if hasattr(result, "data_vars"):
+            for name in result.data_vars:
+                source = x[name] if hasattr(x, "data_vars") else x
+                result[name].attrs = getattr(source, "attrs", {})
+
+    return result
 
 
 def polyval(coord, coeffs, degree_dim="degree"):
